@@ -1,67 +1,273 @@
-# Template de démonstration
+# IP Webcam
 
-Ceci est la documentation utilisateur de l'intégration. Gladys ré-héberge ce
-fichier et affiche un lien **Documentation** permanent vers lui dans l'écran
-de configuration (dans la langue de l'utilisateur, avec l'anglais en repli) —
-c'est au moment de configurer que l'utilisateur en a le plus besoin. Gardez
-les courtes indications d'accueil dans les blocs `section` du `config_schema`
-du manifest ; mettez ici le pas-à-pas détaillé (captures d'écran, dépannage…).
+Transforme un **vieux téléphone Android** en **caméra et ensemble de capteurs**
+pour Gladys, avec l'application gratuite **IP Webcam** (de Pavel Khlebovich),
+**en local**, par le serveur web de l'application : images de la caméra,
+détection de mouvement de l'application, niveau sonore, luminosité, batterie
+(niveau, charge, température), proximité et pression quand le téléphone les a,
+et les commandes de l'application (lampe torche, mise au point, vision
+nocturne, enregistrement vidéo, orientation, qualité d'image). Aucun compte
+cloud, rien ne sort de votre réseau.
 
-## Ce que vous obtenez
+> **Developed without the hardware: feedback welcome.** Développée sans le
+> matériel : vos retours sont les bienvenus. Cette intégration a été écrite à
+> partir du travail de l'intégration Home Assistant `android_ip_webcam`, de sa
+> bibliothèque `pydroid-ipcam` et des vraies réponses d'un téléphone gardées
+> dans leurs tests, sans téléphone IP Webcam sous la main. Si quelque chose ne
+> marche pas comme décrit, ouvrez un ticket sur
+> [github.com/guim31/gladys-ip-webcam/issues](https://github.com/guim31/gladys-ip-webcam/issues)
+> avec les logs de l'intégration (`LOG_LEVEL=debug`).
+>
+> Cette intégration n'est pas affiliée à l'application IP Webcam ni à son
+> auteur. Android est une marque de Google LLC.
 
-Six appareils de démonstration apparaissent après l'installation : une
-station météo (vraies données Open-Meteo), un interrupteur, une lampe
-variable, une prise connectée avec mesure de puissance, un détecteur de
-mouvement et une caméra.
+## Ce qu'il vous faut
 
-## Configuration
+- Un téléphone Android avec l'application **IP Webcam**, sur le même réseau que
+  Gladys, branché sur un chargeur (l'application tourne jour et nuit).
+- Une **adresse fixe** pour le téléphone : réservez-la dans votre box (bail
+  DHCP réservé). L'application ne donne aucun numéro de série : l'adresse et le
+  port **sont** l'identité du téléphone dans Gladys, et une nouvelle adresse
+  crée un nouvel appareil.
+- Gladys **5.1 ou plus récent**.
 
-1. Ouvrez l'onglet **Configuration** de l'intégration.
-2. Renseignez la **latitude** et la **longitude** que la station météo de
-   démonstration doit observer (Paris par défaut), et choisissez votre unité
-   de température. L'**intervalle de rafraîchissement** règle la fréquence
-   de lecture de la station météo et de la puissance de la prise : toutes
-   les 5 minutes par défaut, toutes les minutes au plus.
-3. Enregistrez : les appareils apparaissent dans l'onglet **Découverte**,
-   prêts à être ajoutés.
+## Mise en route
 
-Le réglage **Préférer la connexion locale** pilote la prise de
-démonstration : elle affiche en badge le canal réellement utilisé (local ou
-cloud), avec un point orange quand elle fonctionne en mode dégradé (local
-refusé, bascule cloud).
+### Dans l'application
 
-## Actions
+1. Installez IP Webcam depuis Google Play et ouvrez-la.
+2. Facultatif mais conseillé : **Local broadcasting → Login/password**, pour
+   protéger la page web du téléphone (sinon, n'importe qui sur votre réseau
+   voit la caméra).
+3. Pour les capteurs : **Data logging → Enable data logging** (batterie,
+   lumière, son, proximité, pression). Sans cela, le téléphone n'a que sa
+   caméra et ses commandes dans Gladys.
+4. Pour le mouvement : **Motion detection** activé (l'intégration peut aussi
+   l'activer depuis une scène).
+5. En bas de l'écran principal : **Start server**. L'application affiche
+   l'adresse à saisir, par exemple `http://192.168.1.50:8080`.
+6. Gardez l'application active : désactivez l'optimisation de batterie d'IP
+   Webcam dans Android, pour que le système ne l'arrête jamais.
 
-- **Tester le fournisseur météo** — effectue une requête en direct vers
-  Open-Meteo et affiche la température et l'humidité actuelles sous le
-  bouton.
-- **Identifier un appareil** — choisissez un de vos appareils dans la liste
-  et il se signale (la lampe de démonstration « clignote » dans les logs).
+### Réglages
 
-## Scènes
+Dans Gladys, **Intégrations → IP Webcam → Configuration** :
 
-L'intégration ajoute ses propres cartes à l'éditeur de scènes (Gladys 5.1
-ou plus récent), dans la catégorie **Intégrations** :
+- **Adresses des téléphones** : l'adresse IP de chaque téléphone, séparées par
+  des virgules, avec `:port` quand un téléphone utilise un autre port que celui
+  ci-dessous. `https://` devant pour un téléphone en HTTPS.
+- **Port** : le port de l'application, `8080` sauf si vous l'avez changé.
+- **HTTPS** : seulement si vous avez activé HTTPS dans l'application. Son
+  certificat auto-signé est accepté.
+- **Nom d'utilisateur** et **Mot de passe** : l'identifiant de l'application,
+  si vous en avez défini un. Les deux, ou aucun. Les mêmes pour tous les
+  téléphones. Le mot de passe n'est envoyé qu'aux téléphones, jamais affiché ni
+  journalisé.
+- **Rafraîchissement des capteurs** : fréquence de lecture de chaque téléphone,
+  toutes les 10 s par défaut (comme Home Assistant). Plus rapide voit plus tôt
+  un mouvement bref, pour un peu plus de batterie et de Wi-Fi.
+- **Rafraîchissement de l'image** : fréquence de renouvellement de l'image du
+  tableau de bord, toutes les minutes par défaut. Un mouvement prend toujours
+  une nouvelle image. « Seulement sur mouvement ou demande » laisse le
+  téléphone tranquille.
+- **Autoriser les scènes à couper la détection de mouvement** : désactivé par
+  défaut. Couper la détection désarme le téléphone ; voir
+  [Actions](#actions).
+- **Langue des noms de fonctionnalités** : Gladys ne transmet pas votre langue à
+  une intégration ; les noms des fonctionnalités suivent ce choix (français par
+  défaut).
 
-- **Mouvement détecté** (déclencheur) — lance la scène quand un détecteur
-  de démonstration voit bouger quelque chose. Choisissez éventuellement le
-  détecteur et ce qui a bougé (personne, animal) ; laissés vides, toute
-  détection correspond. Les actions suivantes peuvent lire ce qui a bougé
-  avec `{{triggerEvent.data.target}}`.
-- **Identifier un appareil** (action) — fait se signaler l'appareil choisi.
-  Elle indique si l'appareil a pu se signaler, pour que les actions
-  suivantes puissent en dépendre.
+Puis **Intégrations → IP Webcam → Découverte** : un appareil par téléphone, à
+ajouter avec **Ajouter à Gladys**.
+
+### Actions de configuration
+
+- **Tester la connexion** : relit chaque téléphone et dit, pour chacun, si IP
+  Webcam répond, combien de capteurs il enregistre et combien de réglages il
+  propose, ou pourquoi il ne répond pas.
+- **Adresse du flux vidéo** : l'adresse RTSP d'un téléphone, à mettre dans
+  l'intégration « Caméra RTSP » de Gladys pour la vidéo en direct (voir
+  [Vidéo en direct](#vidéo-en-direct)). Le mot de passe est remplacé par
+  `PASSWORD` : saisissez le vôtre à sa place.
+
+## L'appareil
+
+Un appareil par téléphone, nommé d'après son adresse (renommez-le dans Gladys).
+Chaque fonctionnalité n'apparaît que si le téléphone la propose.
+
+### Image de la caméra
+
+- **Image** : l'image courante du téléphone (`/shot.jpg`), réduite si besoin
+  pour tenir dans Gladys (150 Ko au plus). Prise à l'intervalle de la
+  configuration, à chaque mouvement, quand Gladys en demande une, et par
+  l'action de scène.
+
+### Capteurs
+
+Les capteurs demandent **Data logging** dans l'application. Gladys ne montre
+une fonctionnalité que si l'application envoie son capteur.
+
+- **En ligne** : allumé tant que le téléphone répond.
+- **Batterie** : niveau, en %.
+- **En charge** : si le téléphone charge (seulement si l'application le
+  signale).
+- **Température de la batterie** : en °C. À surveiller : un téléphone branché
+  jour et nuit au-dessus de 45 °C use vite sa batterie (le widget prévient).
+- **Luminosité** : en lux, d'après le capteur de lumière du téléphone.
+- **Niveau sonore** : le niveau le plus fort entendu depuis la dernière lecture,
+  sur l'échelle propre de l'application (pas des décibels calibrés : environ
+  180 dans une pièce calme sur le téléphone des tests de Home Assistant).
+  Regardez les valeurs de votre téléphone dans un moment calme et un moment
+  bruyant avant de choisir un seuil.
+- **Mouvement** : la détection de mouvement de l'application (allumé =
+  mouvement). Un mouvement bref entre deux lectures est quand même vu : le
+  mouvement passe à allumé, puis à éteint quelques secondes plus tard.
+- **Proximité** : en cm, d'après le capteur de proximité près de l'écouteur.
+  Beaucoup de téléphones ne disent que « proche » (0) ou « loin » (5 ou 8).
+- **Pression** : en hPa, sur les téléphones qui ont un baromètre.
+- **Détection de mouvement** : si la détection de mouvement de l'application
+  est active. **Lecture seule** : la couper désarme le téléphone, ce n'est donc
+  jamais un interrupteur (voir l'action de scène
+  [Détection de mouvement du téléphone](#actions)).
+
+### Commandes
+
+- **Lampe torche** : la LED du flash du téléphone.
+- **Mise au point fixe** : allumé fait la mise au point une fois et la garde ;
+  éteint revient à la mise au point continue. L'application ne la signale pas :
+  Gladys montre la dernière commande.
+- **Vision nocturne** : la vision nocturne de l'application (image plus claire,
+  plus bruitée).
+- **Enregistrement vidéo** : lance ou arrête un enregistrement sur le téléphone
+  (le fichier reste sur le téléphone, dans le dossier choisi dans
+  l'application).
+- **Orientation**, quatre options :
+  - Paysage
+  - Paysage inversé
+  - Portrait
+  - Portrait inversé
+- **Qualité d'image** : la qualité JPEG de l'application, de 30 à 100 %. Le
+  téléphone peut avoir une autre valeur (49 par défaut) : Gladys montre la plus
+  proche.
 
 ## Tableau de bord
 
-Ajoutez le widget **État de la démo** à un tableau de bord : il affiche en
-direct la température de la station météo et la puissance de la prise du
-bureau, la connexion utilisée par la prise (en orange si dégradée) et la
-position observée. Son bouton **Identifier la lampe** fait se signaler la
-lampe de démonstration.
+- La boîte **caméra** de Gladys affiche l'image du téléphone.
+- Le widget **Téléphones IP Webcam** (Gladys 5.1 ou plus récent) :
+  - sans réglage, tous les téléphones d'un coup d'œil : téléphones en ligne,
+    puis une ligne par téléphone avec sa batterie et sa température, en orange
+    quand la batterie dépasse 45 °C ou descend sous 20 % sans charger, en rouge
+    quand le téléphone ne répond pas ;
+  - avec un téléphone choisi dans ses réglages : sa dernière image, sa batterie
+    et sa température (en direct), s'il charge, sa détection de mouvement et
+    son enregistrement, et trois boutons : **Image** (une nouvelle),
+    **Lampe** et **Enregistrer** / **Arrêter**.
+
+## Scènes
+
+### Déclencheurs
+
+L'intégration ne déclare aucun déclencheur à elle : les états de l'appareil
+déclenchent déjà les scènes de Gladys.
+
+- Un mouvement : déclencheur **État d'un appareil** sur **Mouvement**, égal à
+  1. La nouvelle image du téléphone est publiée **avant** l'état du mouvement :
+     un « envoyer l'image de la caméra » juste après envoie ce que le téléphone a
+     vu.
+- Un bruit : déclencheur **État d'un appareil** sur **Niveau sonore**,
+  au-dessus de votre seuil. Le niveau est le plus fort depuis la dernière
+  lecture : un bruit bref entre deux lectures le franchit quand même.
+- Le chargeur débranché : **En charge** égal à 0. Le téléphone perdu :
+  **En ligne** égal à 0.
+
+### Actions
+
+- **Prendre une image du téléphone** : une nouvelle image du téléphone,
+  envoyée à Gladys, pour un « envoyer l'image de la caméra » qui suit.
+- **Enregistrer une vidéo sur le téléphone** : enregistre pendant la durée
+  choisie (1 à 60 minutes), puis s'arrête, même si l'intégration redémarre
+  entre-temps. Une **Étiquette du fichier** facultative nomme le fichier. Un
+  enregistrement déjà lancé à la main n'est pas touché (sortie « Enregistrement
+  lancé par cette action » : faux), et n'est jamais arrêté par la minuterie.
+- **Arrêter l'enregistrement du téléphone** : arrête un enregistrement.
+- **Détection de mouvement du téléphone** : active ou coupe la détection de
+  mouvement de l'application. L'activer est toujours permis. La **couper**
+  désarme le téléphone : c'est refusé sauf si **Autoriser les scènes à couper la
+  détection de mouvement** est coché dans la configuration, et ce n'est jamais
+  un interrupteur de l'appareil (aucun bouton du tableau de bord, aucun
+  assistant vocal ne peut la couper par erreur).
+
+### Idées de scènes
+
+- **Quelqu'un dans le garage la nuit** : Mouvement = 1 entre 23 h et 6 h →
+  Enregistrer une vidéo sur le téléphone (5 min) → envoyer l'image de la caméra
+  sur votre téléphone.
+- **Le bébé pleure** : Niveau sonore au-dessus de votre seuil → envoyer un
+  message avec l'image de la caméra.
+- **Départ de la maison** : quand la dernière personne part → Détection de
+  mouvement du téléphone activée ; au retour → coupée (si autorisé dans la
+  configuration).
+- **Le vieux téléphone chauffe** : Température de la batterie au-dessus de 45
+  → envoyer un message « débrancher le téléphone du garage ».
+
+## Vidéo en direct
+
+L'intégration apporte des images, pas de vidéo. Pour la vidéo en direct,
+utilisez l'intégration « Caméra RTSP » de Gladys avec l'adresse donnée par
+**Adresse du flux vidéo** (H.264,
+`rtsp://user:PASSWORD@<adresse>:8080/h264_aac.sdp`). C'est le serveur RTSP de
+l'application : les formats vidéo dépendent du téléphone.
+
+## Rafraîchissement et limites
+
+- Chaque téléphone est lu à l'intervalle de **Rafraîchissement des capteurs** :
+  deux petites réponses JSON (`/status.json`, `/sensors.json`) sur votre
+  réseau, sans quota ni compte. Deux requêtes à la fois au plus par téléphone :
+  l'application sert aussi ses spectateurs.
+- Images : à l'intervalle de **Rafraîchissement de l'image**, à chaque
+  mouvement, et sur demande ; jamais plus d'une toutes les 5 secondes par
+  téléphone (la limite de Gladys est de 12 par minute).
+- Gladys n'interroge pas l'appareil : l'intégration lit les téléphones avec sa
+  propre minuterie. Seules les valeurs qui changent sont envoyées à Gladys, et
+  les valeurs inchangées de nouveau toutes les 6 heures, pour que le tableau de
+  bord n'affiche jamais « Pas de valeur récente ».
 
 ## Dépannage
 
-L'intégration journalise tout ce qu'elle fait : consultez les logs de
-l'intégration depuis l'interface Gladys (ou `docker logs` sur l'hôte) avec
-`LOG_LEVEL=debug` pour le détail complet.
+- **« Le téléphone ne répond pas »** : le serveur de l'application est arrêté
+  (Android l'a tué : désactivez l'optimisation de batterie d'IP Webcam), le
+  téléphone a changé d'adresse (réservez-la dans la box) ou le port est faux.
+  Ouvrez `http://<adresse>:8080` dans un navigateur sur le même réseau.
+- **« Nom d'utilisateur ou mot de passe refusé »** : l'identifiant défini dans
+  l'application (Local broadcasting → Login/password) diffère de la
+  configuration.
+- **« Quelque chose répond à cette adresse, mais pas IP Webcam »** : un autre
+  appareil ou un autre port.
+- **Aucun capteur** : activez **Data logging** dans l'application, puis
+  **Tester la connexion** et relancez la **Découverte** : les nouvelles
+  fonctionnalités apparaissent avec « Mettre à jour ».
+- **Pas de mouvement** : activez **Motion detection** dans l'application (ou
+  avec l'action de scène). Sa sensibilité se règle dans l'application.
+- **Un nouvel appareil après un changement d'adresse** : l'adresse est
+  l'identité du téléphone. Réservez-la dans la box, supprimez l'ancien
+  appareil.
+- Logs : **Intégrations → IP Webcam → Logs**. `LOG_LEVEL=debug` montre chaque
+  lecture.
+
+## Limites
+
+- Développée sans téléphone IP Webcam : les réponses viennent des tests de Home
+  Assistant. **En charge** repose sur un capteur `battery_charging` que les
+  tests de Home Assistant ne montrent pas ; **Enregistrement vidéo** lit l'état
+  de l'enregistrement dans le statut vidéo de l'application, dont les valeurs
+  pendant un enregistrement ne sont pas documentées. Les deux sont à confirmer
+  sur un vrai téléphone.
+- L'identité d'un téléphone est son adresse et son port : l'application ne
+  donne aucun numéro de série.
+- Le niveau sonore est l'échelle relative de l'application, pas des décibels.
+- La **Mise au point fixe** n'est pas signalée par l'application : Gladys
+  montre la dernière commande.
+- Pas de vidéo en direct par cette intégration (voir
+  [Vidéo en direct](#vidéo-en-direct)) ; pas d'audio.
+- Les fonctions d'IP Webcam Pro (cloud, Ivideon) ne sont pas utilisées.
+  Android seulement : les applications iOS au nom proche ne sont pas IP Webcam.

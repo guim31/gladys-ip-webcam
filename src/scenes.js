@@ -1,41 +1,54 @@
 // -----------------------------------------------------------------------------
-// Scene actions (SDK v0.14+, Gladys 5.1+).
+// Scene action handlers (manifest `scene_actions`, Gladys 5.1+). Keys are
+// permanent once published.
 //
-// A scene action is an OPERATION a scene author places in a scene, with
-// parameters and a result: "identify this device", "take a snapshot", "clean
-// these rooms". Each one is declared in the manifest `scene_actions` field
-// (key, label, `fields` in the config_schema grammar, scalar `outputs`) and
-// handled here, keyed by that same `key`; index.js registers every entry with
-// `gladys.onSceneAction(key, ...)`.
-//
-// Scene TRIGGERS are the other direction ("this happened"): they are fired by
-// the device that observes the event, see src/devices/motionSensor.js.
-//
-// The rules that matter:
-//   - `fields` arrive RESOLVED: scene variables substituted, defaults applied,
-//     validated by the core; a `"source": "devices"` field is the chosen
-//     device external_id;
-//   - resolve an object of the declared `outputs` (scalars only), readable by
-//     the following actions of the scene, or `undefined` for none. Keys not
-//     declared in the manifest are dropped by the core;
-//   - throwing fails THIS action only: the scene logs it and continues. A
-//     scene action is never a condition: return an output and let the scene
-//     author gate on it;
-//   - never fire a scene event as a consequence of a received action: a scene
-//     bound to that event would loop through the integration.
+//   - take_image: a fresh image of a phone, sent to Gladys, so the next action
+//     ("send the camera image" in a message) sends what it sees now;
+//   - record_video: record on the phone for N minutes (the file stays on the
+//     phone), then stop — a motion at night, a door opened. A recording already
+//     running that the integration did not start is left alone;
+//   - stop_recording: stop a recording;
+//   - set_motion_detection: the "security mode" of the app. Turning it off
+//     disarms the phone: refused unless allowed in the configuration, and
+//     never a switch of the device (no dashboard toggle, no voice assistant).
+// Gladys applies the field defaults to scene actions; a failure throws, the
+// scene logs it and carries on.
 // -----------------------------------------------------------------------------
 
-import { createLogger } from '@gladysassistant/integration-sdk';
-import { signalDevice } from './devices/index.js';
+export const RECORDING_MINUTES = Object.freeze(['1', '2', '5', '10', '30', '60']);
+export const DEFAULT_RECORDING_MINUTES = '2';
+export const MOTION_STATES = Object.freeze(['on', 'off']);
 
-const logger = createLogger({ name: 'scenes' });
+const minutesOf = (value) =>
+  Number(RECORDING_MINUTES.includes(String(value)) ? value : DEFAULT_RECORDING_MINUTES);
+
+// A recording tag names the file on the phone: letters, digits, - and _ only.
+const tagOf = (value) =>
+  typeof value === 'string' && value.trim()
+    ? value
+        .trim()
+        .replace(/[^A-Za-z0-9_-]+/g, '_')
+        .slice(0, 40)
+    : null;
 
 export const SCENE_ACTIONS = {
-  // The ack is awaited under the action's `timeout_seconds` (15 s in the
-  // manifest), counted from the moment the scene reaches the action.
-  async identify_device(gladys, { fields, config }) {
-    logger.info(`Scene action identify_device <- ${fields.device}`);
-    const signalled = await signalDevice(gladys, fields.device, config);
-    return { signalled };
+  async take_image(hub, { fields = {} }) {
+    await hub.refreshImage(fields.phone);
+  },
+
+  async record_video(hub, { fields = {} }) {
+    const started = await hub.startRecording(fields.phone, {
+      minutes: minutesOf(fields.minutes),
+      tag: tagOf(fields.tag),
+    });
+    return { started };
+  },
+
+  async stop_recording(hub, { fields = {} }) {
+    await hub.stopRecording(fields.phone);
+  },
+
+  async set_motion_detection(hub, { fields = {} }) {
+    await hub.setMotionDetection(fields.phone, String(fields.state ?? 'on') !== 'off');
   },
 };
