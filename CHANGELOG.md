@@ -10,6 +10,8 @@ the notes of the version's GitHub Release.
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-10-15
+
 ### Added
 
 - An old Android phone running the IP Webcam app becomes a Gladys device,
@@ -33,4 +35,5 @@ the notes of the version's GitHub Release.
   seconds by default, the images renewed every minute by default.
 - English, French, German and Spanish texts and documentation.
 
-[Unreleased]: https://github.com/guim31/gladys-ip-webcam/commits/main
+[Unreleased]: https://github.com/guim31/gladys-ip-webcam/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/guim31/gladys-ip-webcam/releases/tag/v1.0.1

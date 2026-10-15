@@ -1,6 +1,6 @@
 {
   "name": "gladys-ip-webcam",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "IP Webcam integration for Gladys Assistant: an old Android phone as a camera and sensors, over the local HTTP API of the app.",
   "type": "module",

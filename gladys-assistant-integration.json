@@ -8,8 +8,8 @@
     "de": "Ein altes Android-Handy als Kamera und Sensoren mit der App IP Webcam, lokal.",
     "es": "Un viejo teléfono Android como cámara y sensores con la app IP Webcam, en local."
   },
-  "version": "1.0.0",
-  "docker_image": "ghcr.io/guim31/gladys-ip-webcam:1.0.0",
+  "version": "1.0.1",
+  "docker_image": "ghcr.io/guim31/gladys-ip-webcam:1.0.1",
   "gladys_version": ">=5.1.0",
   "cover_image": "https://raw.githubusercontent.com/guim31/gladys-ip-webcam/main/cover.png",
   "categories": ["security"],
