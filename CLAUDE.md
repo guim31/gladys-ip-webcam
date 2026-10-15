@@ -9,19 +9,25 @@ A Gladys Assistant **external integration**: a Node.js service (Node 22+, ESM,
 no build step) that runs in its own sandboxed Docker container and talks to
 Gladys through
 [`@gladysassistant/integration-sdk`](https://github.com/GladysAssistant/integration-sdk-js),
-its only runtime dependency. It started from the official JavaScript template.
+It started from the official JavaScript template. Runtime dependencies: the SDK
+and `jpeg-js` (pure JavaScript, to shrink camera pictures).
+
+It turns an old Android phone running the **IP Webcam** app (Pavel Khlebovich)
+into a camera and sensors, over the app's local HTTP API, as the Home Assistant
+integration `android_ip_webcam` (library `pydroid-ipcam`) does.
 
 ## Commands
 
 ```bash
 npm install
 npm test                                  # node --test, the built-in runner
-node --test test/devices.test.js          # one file
-node --test --test-name-pattern "plug"    # tests whose name matches
+node --test test/hub.test.js              # one file
+node --test --test-name-pattern "motion"  # tests whose name matches
 npm run lint                              # ESLint
 npm run format:check                      # Prettier, as the CI runs it
 npm run format                            # Prettier, fix in place
 npx github:GladysAssistant/integration-store .   # store admission checks
+[IPWEBCAM_USER=… IPWEBCAM_PASSWORD=…] node scripts/probe.mjs <ip> [seconds]   # real phone, read-only
 ```
 
 The CI (`.github/workflows/ci.yml`) runs `format:check`, `lint` and `test` on
@@ -31,16 +37,26 @@ pushing.
 ## Architecture
 
 ```
-index.js                          SDK wiring only: handlers registered before connect()
-src/devices/index.js              registry of the device blueprints + dispatch helpers
-src/devices/<type>.js             one device type per file (buildDevice, onPoll, onSetValue...)
+index.js                          SDK wiring only: src/app.js registers the handlers before connect()
+src/app.js                        every SDK handler -> the hub (also used by the tests)
+src/hub.js                        all phones: reads on a timer, states, motion, images, commands,
+                                  timed recordings, connection status, logs
+src/devices.js                    the Gladys device of a phone, feature names (4 languages), values
+src/ipwebcam/client.js            HTTP client of one phone: Basic auth, 2 requests in flight, errors
+src/ipwebcam/http.js              the HTTP seam (node:http/https), replaced by the fake phone in tests
+src/ipwebcam/model.js             what /status.json and /sensors.json mean
+src/image.js, image-worker.js,    JPEG -> camera image <= 150 KB (worker, scaled decoder),
+  jpeg-scaled.js                  from guim31/gladys-dahua
 src/scenes.js                     scene action handlers (manifest `scene_actions`)
-src/widgets.js                    dashboard widget handlers (manifest `widgets`)
+src/widgets.js                    dashboard widget `ip_webcam` (manifest `widgets`)
+src/texts.js                      status, error, report and action texts (4 languages)
 src/config.js                     DEFAULT_CONFIG (mirrors the manifest defaults) + normalization
-src/weather.js                    example driver (Open-Meteo)
+src/store.js                      /data/ip-webcam-state.json (capabilities, timed recordings)
+scripts/probe.mjs                 read-only probe of a real phone (not in the image)
 gladys-assistant-integration.json manifest: name, config_schema, actions, image...
-docs/en.md, docs/fr.md            user documentation, re-hosted by Gladys (mandatory)
+docs/{en,fr,de,es}.md             user documentation, re-hosted by Gladys (en and fr mandatory)
 test/                             node --test, against the SDK's fake Gladys (integration-sdk/testing)
+                                  and helpers/fakePhone.js (built from test/fixtures/ipwebcam)
 .github/scripts/release.mjs       release helpers (manifest bump, changelog), tested in test/
 ```
 
@@ -70,8 +86,10 @@ test/                             node --test, against the SDK's fake Gladys (in
   `type: "provider"`: 5.1.0). `test/manifest.test.js` ties the manifest to the
   code (defaults, action, scene and widget handlers): change both sides
   together.
-- **User-facing text** is bilingual (English and French): action messages,
-  manifest texts, and `docs/en.md` / `docs/fr.md`, kept in sync.
+- **User-facing text** exists in English, French, German and Spanish: action
+  messages, widget content, feature names, manifest texts, and
+  `docs/en.md`, `docs/fr.md`, `docs/de.md`, `docs/es.md`, kept in sync
+  (`test/i18n.test.js` checks the languages and the doc sections).
 - **Style.** Prettier formats, ESLint catches mistakes. Comments explain why,
   in English. Tests never touch the network.
 
@@ -233,3 +251,50 @@ long, et sur un « Sie »/« Ihr… » de politesse en allemand. Le store exige 
 - Docs `en`, `fr`, `de`, `es` avec les mêmes sections.
 - Chauffe, ouverture, sécurité : ne rien rendre pilotable « comme un thermostat » ou par un assistant
   vocal quand une erreur serait dangereuse (leçon d'OctoPrint).
+
+## IP Webcam : l'API et les pièges de cette intégration
+
+Sources : `home-assistant-libs/pydroid-ipcam` (Apache-2.0, commit 03884df du 13/10/2026) et l'intégration
+Home Assistant `android_ip_webcam` (Apache-2.0, home-assistant/core f5706e7 du 15/10/2026), dont les fixtures de
+tests sont reprises dans `test/fixtures/ipwebcam` (adresse anonymisée). Aucun téléphone n'a été testé :
+`scripts/probe.mjs` est à lancer par l'orchestrateur sur un vrai téléphone (lecture seule, `[seconds]` pour
+observer les changements).
+
+- **API** : tout est `GET`. `/status.json?show_avail=1` (réglages en chaînes dans `curvals`, `"on"`/`"off"`),
+  `/sensors.json` (`{ clé: { unit, data: [[horodatage_ms, [valeur, …]], …] } }`, échantillons récents, horloge du
+  téléphone), `/shot.jpg`, `/enabletorch`, `/disabletorch`, `/focus`, `/nofocus`, `/startvideo?force=1[&tag=]`,
+  `/stopvideo?force=1`, `/settings/<clé>?set=<valeur>`. Une commande réussie répond un texte contenant `Ok`.
+- **Choix des réglages** : sous `avail` selon `pydroid-ipcam`, mais **au premier niveau** dans la fixture de Home
+  Assistant (`"night_vision": ["on", "off"]`) : lire les deux. Un réglage existe si sa clé est dans `curvals`.
+- **Capteurs** : présents seulement si « Data logging » est actif dans l'appli ; `{}` sinon. `motion` est un niveau
+  brut (non publié), `motion_active` la détection (0/1). `battery_charging` **n'est pas dans la fixture** : clé
+  supposée, la fonctionnalité n'apparaît que si l'appli l'envoie. `battery_temp` a l'unité `℃` (un seul caractère
+  U+2103, pas « °C »).
+- **Niveau sonore** : échelle relative de l'appli (≈ 180 au calme dans la fixture), pas des dB, et le front ne
+  connaît pas d'unité décibel (absente de la table des unités) : `noise-sensor/integer` sans unité, bornes 0-1000.
+  On publie le **maximum des échantillons depuis la dernière lecture**, pour qu'un bruit bref franchisse un seuil
+  de scène.
+- **Mouvement bref** : `motion_active` peut passer à 1 puis 0 entre deux lectures ; tous les échantillons
+  postérieurs à la dernière lecture sont examinés, et un 1 vu entre-temps est publié en impulsion (1 puis 0). Si
+  l'horloge du téléphone recule, on repart du dernier échantillon. Le premier passage ne rejoue pas l'historique.
+- **Image avant l'état** : à un début de mouvement, l'image est publiée avant l'état `motion` = 1 (attente
+  bornée à 4 s), pour qu'une scène « mouvement → envoyer l'image » envoie la bonne image.
+- **Enregistrement** : l'état se lit dans `video_status.mode` (`"none"` = rien) ; la valeur pendant un
+  enregistrement **n'est pas documentée** : tout autre texte compte comme « enregistre ». À confirmer avec la sonde.
+  Un enregistrement minuté lancé par une scène garde sa fin dans `/data` ; un enregistrement lancé à la main n'est
+  jamais arrêté par une minuterie, et l'arrêt à la main efface la minuterie.
+- **Identité** : l'appli n'expose ni numéro de série, ni MAC, ni nom. Seule l'adresse et le port tapés
+  (`192-0-2-10-8080`) servent de `platformId` : la doc demande une réservation DHCP.
+- **Sécurité** : `motion_detect` (le « mode sécurité ») est publié en `input/binary` **lecture seule** ; l'activer
+  ou le couper passe par l'action de scène `set_motion_detection`, et la coupure (désarmement) est refusée sauf
+  `allow_motion_detection_off` (faux par défaut).
+- **Mise au point** : `/focus` ne se relit pas ; `switch/binary` avec `has_feedback: false`, état = dernière
+  commande.
+- **Qualité** : l'appli garde n'importe quel entier 1-100 (49 par défaut) ; `text/select` à 30/50/70/90/100,
+  publié à l'option la plus proche.
+- **HTTPS** : certificat auto-signé de l'appli, accepté (`rejectUnauthorized: false`). Authentification Basic.
+  Aucun verrouillage de compte connu, mais pas de boucle de réessai pour autant.
+- Un `text/select` se publie `{ text }` ; le faux Gladys rend la chaîne avec `lastState`. La réponse d'une action
+  de configuration arrive dans `ack.data.message` (pas `ack.data`).
+- Le toast d'un bouton de widget peut être l'objet multilingue entier : le cœur choisit la langue de
+  l'utilisateur (une action de configuration ou de scène ne la reçoit pas).
